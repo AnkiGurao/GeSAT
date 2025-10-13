@@ -5,9 +5,11 @@ library(dplyr)
 library(tidyr)
 library(ggpubr)
 library(readr)
-library(psych)  # for geometric.mean function
+library(psych) 
 library(DT)
 library(purrr)
+library(forcats)
+library(shinycssloaders)
 
 # Define UI
 library(shiny)
@@ -15,10 +17,11 @@ library(shinythemes)
 
 ui <- fluidPage(
   theme = shinythemes::shinytheme("united"),
+  
   # Intro and Logo Section
   fluidRow(
     column(2,
-           tags$img(src = "logo.png", height = "350px", width = "300px", alt = "GeSAT Logo")
+           tags$img(src = "logo.png", height = "550px", width = "300px", alt = "GeSAT Logo")
     ),
     column(10,
            div(style = "padding: 30px; background-color: #f9f9f9; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);",
@@ -43,8 +46,9 @@ ui <- fluidPage(
                       style = "font-size: 15px; color: #555;")
            )
     )
-    ),
-    sidebarLayout(
+  ),
+  
+  sidebarLayout(
     sidebarPanel(
       fileInput("std_curve_file", "Upload Standard Curve File (CSV)", accept = ".csv"),
       tags$hr(),
@@ -91,17 +95,64 @@ ui <- fluidPage(
                  br(), br(),
                  h4("Visualization of Gene Combination Ranking"),
                  plotOutput("iccRankPlot"),
-                 downloadButton("download_icc_rank_plot", "Download Plot", class = "btn-success"),
-                 
+                 downloadButton("download_icc_rank_plot", "Download Plot", class = "btn-success")
         ),
         tabPanel("GeNorm", 
-                 plotOutput("genorm_plot", height = "700px"),
-                 downloadButton("download_genorm_plot", "Download GeNorm M Plot", class = "btn-success"),
-                 plotOutput("genorm_pairwise_plot", height = "700px"),
-                 downloadButton("download_genorm_pairwise_plot", "Download GeNorm Pairwise Plot", class = "btn-success"),
-                 tableOutput("genorm_ranking_table"),
-                 downloadButton("download_genorm_ranking_table", "Download GeNorm Ranking Table", class = "btn-success")
-        ),
+                 # --- CSS for strong flashing effect ---
+                 tags$style(HTML("
+    #use_ctrlgene.blink {
+      animation: flash 0.8s infinite;
+    }
+    @keyframes flash {
+      0%, 100% { background-color: #ffeb3b; box-shadow: 0 0 10px #ffeb3b; }
+      50% { background-color: #ff0000; box-shadow: 0 0 15px #ff0000; }
+    }
+  ")),
+                 
+                 # --- The checkbox ---
+                 checkboxInput("use_ctrlgene", "Use ctrlGene::geNorm2()", value = FALSE),
+                 
+                 # --- JS: blink until checked ---
+                 tags$script(HTML("
+    $(document).ready(function() {
+      $('#use_ctrlgene').addClass('blink');
+      $('#use_ctrlgene').on('change', function() {
+        if (this.checked) {
+          $(this).removeClass('blink');
+        } else {
+          $(this).addClass('blink');
+        }
+      });
+    });
+  ")),
+                 
+                 # --- Your existing tabsetPanel ---
+                 tabsetPanel(
+                   tabPanel("Stability Ranking",
+                            tags$div(class = "result-container",
+                                     plotOutput("genorm_plot", height = "500px"),
+                                     downloadButton("download_genorm_plot", "Download Plot", class = "btn-success"),
+                                     tags$br(), tags$br(),
+                                     tableOutput("genorm_ranking_table"),
+                                     downloadButton("download_genorm_ranking_table", "Download Table", class = "btn-success")
+                            )
+                   ),
+                   
+                   tabPanel("Pairwise Variation",
+                            tags$div(class = "result-container",
+                                     plotOutput("genorm_pairwise_plot", height = "500px"),
+                                     tags$div(class = "alert alert-info",
+                                              "The red dashed line indicates the recommended cutoff (V < 0.15)",
+                                              tags$br(),
+                                              "Optimal number of reference genes is below this threshold"
+                                     ),
+                                     downloadButton("download_genorm_pairwise_plot", "Download Plot", class = "btn-success")
+                            )
+                   )
+                 )
+        )
+        
+        ,
         tabPanel("Delta Ct", 
                  fluidRow(
                    column(12, 
@@ -141,12 +192,12 @@ ui <- fluidPage(
                    column(
                      width = 6,
                      h4("Download Table"),
-                     downloadButton("download_cumulative_table", "Download Detailed Table (CSV)", class = "btn-success")
+                     downloadButton("download_cumulative_table", "Detailed Table", class = "btn-success")
                    ),
                    column(
                      width = 6,
                      h4("Download Plot"),
-                     downloadButton("download_ranking_plot", "Download Stability Plot (PNG)", class = "btn-success")
+                     downloadButton("download_cumulative_plot", "Download Plot", class = "btn-success")
                    )
                  ),
                  br(),
@@ -154,7 +205,7 @@ ui <- fluidPage(
                    column(
                      width = 12,
                      h4("Optional: Raw Ranked Data"),
-                     downloadButton("download_ranking", "Download Raw Ranking Data (CSV)", class = "btn-success")
+                     downloadButton("download_cumulative_raw", "Raw Ranked Data", class = "btn-success")
                    )
                  ),
                  br(), br(),
@@ -170,12 +221,11 @@ ui <- fluidPage(
                    column(
                      width = 12,
                      h4("Preview: Stability Plot"),
-                     plotOutput("ranking_plot", height = "600px")
+                     plotOutput("cumulative_plot", height = "600px")
                    )
                  )
         )
-        
-              )
+      )
     )
   ),
   
@@ -183,21 +233,21 @@ ui <- fluidPage(
   tags$footer(
     style = "text-align:center; color: #888; padding: 10px; font-size: 90%;",
     HTML(
-      "GeSAT | Developed by Ankita Gurao at the Buffalo Genomics Lab, led by Dr. Ranjit Singh Kataria & Dr. Mahesh Shivanand Dige, ICAR-National Bureau of Animal Genetic Resources | 2025<br><br>
+      "GeSAT | Developed by Dr.Ankita Gurao at the Buffalo Genomics Lab, led by Dr. Ranjit Singh Kataria & Dr. Mahesh Shivanand Dige, ICAR-National Bureau of Animal Genetic Resources | 2025<br><br>
     
     <b>Contact:</b><br>
-    Email: <a href='mailto:ranjit.kataria@icar.gov.in'>ranjit.kataria@icar.gov.in</a><br>
-    <b>Citations:</b><br>
+    Email: <a href='mailto:ranjit.kataria@icar.org.in'>ranjit.kataria@icar.org.in</a><br>
+    <b>References:</b><br>
     <b>NormFinder:</b> Andersen CL, Jensen JL, Ørntoft TF. Cancer Res. 2004;64(15):5245-5250.<br>
     <b>Delta Ct:</b> Silver N, Best S, Jiang J, Thein SL. BMC Mol Biol. 2006;7:33.<br>
     <b>BestKeeper:</b> Pfaffl MW, Tichopad A, Prgomet C, Neuvians TP. Biotechnol Lett. 2004;26(6):509-515.<br>
     <b>GeNorm:</b> Vandesompele J, De Preter K, Pattyn F, et al. Genome Biol. 2002;3(7):research0034.<br>
-    <b>Mixed Model Stability:</b> Dai H, Charnigo R, Vyhlidal CA, et al. Stat Med. 2013;32(18):3115-25."
+    <b>Mixed Model Stability:</b> Dai H, Charnigo R, Vyhlidal CA, et al. Stat Med. 2013;32(18):3115-25.<br>
+    <b>ctrlGene:</b> Assess the Stability of Candidate Housekeeping Genes. (CRAN R package). Retrieved from https://github.com/cran/ctrlGene.
+      "
     )
   )
 )
-
-
 # Define Server
 server <- function(input, output, session) {
   
@@ -534,191 +584,234 @@ output$bestkeeper_plot <- renderPlot({
     )
 })
 
-## GeNorm Analysis
-# GeNorm Analysis Function
-measureM <- function(expression, ctVal = TRUE) {
-  expression <- expression[, -c(1, 2)]  # Remove Sample and Group columns
+# -----GENORM------------------
+library(ctrlGene)
+library(dplyr)
+
+geNorm_result <- reactive({
+  req(ct_data(), input$genes)
+  ct_data <- ct_data()
+  genes <- input$genes
+  
+  # Validate gene selection
+  if (length(genes) < 2) {
+    showNotification("Please select at least 2 genes", type = "error")
+    return(NULL)
+  }
+  
+  # Extract Ct values
+  ct_values <- ct_data[, genes, drop = FALSE]
   
   # Convert to numeric matrix
-  expression <- as.data.frame(lapply(expression, function(x) as.numeric(as.character(x))))
+  ct_matrix <- as.matrix(ct_values)
+  ct_matrix <- apply(ct_matrix, 2, as.numeric)
   
-  if (ctVal) {
-    dct <- apply(expression, 2, function(x) x - min(x, na.rm = TRUE))
-    expression <- 2^-dct
-  } else {
-    expression <- apply(expression, 2, function(x) x / max(x, na.rm = TRUE))
+  # Check for non-numeric values
+  if (any(is.na(ct_matrix))) {
+    invalid_count <- sum(is.na(ct_matrix))
+    showNotification(
+      paste("Warning:", invalid_count, "non-numeric values converted to NA"),
+      type = "warning"
+    )
   }
   
-  m <- nrow(expression)
-  n <- ncol(expression)
-  M <- list()
+  # Remove rows with missing values
+  if (anyNA(ct_matrix)) {
+    ct_matrix <- na.omit(ct_matrix)
+    showNotification(
+      "Rows with missing values removed for geNorm analysis",
+      type = "warning"
+    )
+  }
   
-  for (j in 1:n) {
-    Vjk <- c()
-    for (k in 1:n) {
-      if (j != k) {
-        Ajk <- c()
-        for (i in 1:m) {
-          Ajk <- c(Ajk, log2(expression[i, j] / expression[i, k]))
-        }
-        Vjk <- c(Vjk, sd(Ajk, na.rm = TRUE))
-      }
+  # Validate matrix after cleaning
+  if (nrow(ct_matrix) < 3) {
+    showNotification(
+      "Insufficient data after cleaning (need ≥ 3 samples)",
+      type = "error"
+    )
+    return(NULL)
+  }
+  
+  # Run geNorm with error handling
+  tryCatch({
+    if (input$use_ctrlgene) {
+      ctrlGene::geNorm2(ct_matrix)
+    } else {
+      # Your custom geNorm implementation here
     }
-    M <- c(M, mean(Vjk, na.rm = TRUE))
-  }
-  
-  M_df <- data.frame(Genes = colnames(expression), Avg.M = unlist(M))
-  M_df <- M_df[order(M_df$Avg.M, decreasing = TRUE), ]
-  M_df$Rank <- rank(M_df$Avg.M, ties.method = "min")
-  M_df <- M_df[order(M_df$Avg.M, decreasing = TRUE), ]
-  
-  return(M_df)
-}
-
-# GeNorm Helper Plot Functions
-plotM <- function(Mrem) {
-  par(mar = c(5.1, 4.1, 4.1, 2.1), mgp = c(4, 1, 0))
-  
-  ylim_max <- suppressWarnings(max(Mrem$Avg.M, na.rm = TRUE))
-  if (!is.finite(ylim_max)) ylim_max <- 1
-  
-  x <- c(0.5:(nrow(Mrem) - 0.5))
-  plot(x, Mrem$Avg.M, 
-       type = "o", col = "blue", frame.plot = TRUE, xaxt = 'n', pch = 16, 
-       ylim = c(0, ylim_max), lwd = 1, ylab = "", xlab = "")
-  
-  xlabs <- Mrem$Genes
-  lastgenes <- gsub("-", '\n', xlabs[length(xlabs)])   
-  xlabs <- c(xlabs[-length(xlabs)], lastgenes)
-  
-  axis(1, x, xlabs, las = 2)
-  
-  title(main = 'Average expression stability values of remaining control genes',
-        ylab = 'Average expression stability M',
-        xlab = '<:::::  Least stable genes             Most stable genes ::::>')
-}
-
-plotV <- function(Vs) {
-  par(mar = c(5.1, 4.1, 4.1, 2.1), mgp = c(3, 1, 0))
-  
-  ylim_max <- suppressWarnings(max(Vs$Value, na.rm = TRUE))
-  if (!is.finite(ylim_max)) {
-    warning("All Vs$Value entries are NA or invalid. Plotting with default ylim_max = 1.")
-    ylim_max <- 1
-  }
-  
-  Title <- 'Determination of the optimal number of control genes for normalization'
-  
-  barplot(Vs$Value, names.arg = Vs$V, xlab = "Pairwise Variations",
-          main = Title, ylim = c(0, ylim_max), col = "green", border = NA)
-  text(1:(nrow(Vs)) * 1.2 - .5, Vs$Value / 2, round(Vs$Value, 3))
-}
-
-# Reactive GeNorm analysis
-geNormAnalysis <- function(ct_data, ctVal = TRUE) {
-  geNorm_result <- measureM(ct_data, ctVal)
-  return(geNorm_result)
-}
-
-# GeNorm Plot Output
-output$genorm_plot <- renderPlot({
-  req(ct_data())
-  geNorm_result <- geNormAnalysis(ct_data(), ctVal = TRUE)
-  plotM(geNorm_result)
+  }, error = function(e) {
+    showNotification(paste("geNorm Error:", e$message), type = "error")
+    return(NULL)
+  })
 })
 
-# Download GeNorm Plot
+geNorm_table <- reactive({
+  gnrm <- geNorm_result()
+  
+  # Properly handle M-values for the two most stable genes
+  n <- nrow(gnrm)
+  if(n >= 2) {
+    last_m <- gnrm$Avg.M[n-1]  # Use the last calculated M-value
+    gnrm$Avg.M[c(n-1, n)] <- last_m  # Assign to both stable genes
+  }
+  
+  names(gnrm)[1] <- "Target"
+  gnrm$Avg.M <- round(gnrm$Avg.M, 3)
+  
+  # Correct ranking (1 = most stable)
+  gnrm$Rank <- dense_rank(gnrm$Avg.M)
+  gnrm
+})
+
+pairwise_variation <- reactive({
+  gnrm <- geNorm_table()
+  rel_expr <- ct_data()
+  n_genes <- nrow(gnrm)
+  
+  # Validate sufficient genes
+  if(n_genes < 3) {
+    return(data.frame(Variation = character(0), Value = numeric(0)))
+  }
+  
+  # Order from most to least stable
+  ordered_genes <- gnrm$Target[order(gnrm$Rank)]
+  V_values <- numeric(0)
+  V_labels <- character(0)
+  
+  # Calculate pairwise variations
+  for (i in 2:(n_genes - 1)) {
+    top_genes <- ordered_genes[1:(i+1)]
+    
+    # Corrected apply calls (removed extra parenthesis and added drop=FALSE)
+    NF_i <- apply(
+      rel_expr[, top_genes[1:i], drop = FALSE], 
+      1, 
+      function(x) exp(mean(log(x), na.rm = TRUE))
+    )
+    NF_i1 <- apply(
+      rel_expr[, top_genes[1:(i+1)], drop = FALSE], 
+      1, 
+      function(x) exp(mean(log(x), na.rm = TRUE))
+    )
+    
+    log_ratios <- log2(NF_i / NF_i1)
+    V <- sd(log_ratios, na.rm = TRUE)
+    
+    V_values <- c(V_values, V)
+    V_labels <- c(V_labels, paste0("V", i, "/", i+1))
+  }
+  
+  data.frame(Variation = V_labels, Value = round(V_values, 4))
+})
+
+output$genorm_plot <- renderPlot({
+  gnrm <- geNorm_table()
+  # Order from least to most stable for plotting
+  plot_data <- gnrm[order(-gnrm$Avg.M), ]
+  
+  plot(
+    plot_data$Avg.M, 
+    type = "o", 
+    pch = 16, 
+    col = "blue",
+    xaxt = "n", 
+    ylab = "Average Expression Stability (M)", 
+    xlab = "Genes Ranked from Least to Most Stable",
+    main = "geNorm: Expression Stability",
+    las = 1,
+    cex.main = 1.2,
+    cex.lab = 1.1
+  )
+  axis(1, at = 1:nrow(plot_data), labels = plot_data$Target, las = 2)
+  grid(nx = NA, ny = NULL)
+})
+
+output$genorm_pairwise_plot <- renderPlot({
+  V_df <- pairwise_variation()
+  
+  if(nrow(V_df) == 0) {
+    plot(0, 0, type = "n", xlab = "", ylab = "", axes = FALSE)
+    text(0, 0, "Insufficient genes for pairwise variation", cex = 1.2)
+    return()
+  }
+  
+  bp <- barplot(V_df$Value, 
+                names.arg = V_df$Variation, 
+                col = "green",
+                border = NA,
+                main = "Optimal Reference Genes Determination",
+                ylab = "Pairwise Variation (V)",
+                ylim = c(0, max(V_df$Value) * 20),
+                cex.main = 1.2,
+                cex.lab = 1.1)
+  text(bp, V_df$Value + 0.02 * max(V_df$Value), 
+       labels = round(V_df$Value, 3),
+       cex = 0.9)
+  abline(h = 0.15, lty = 2, col = "red")
+})
+
+output$genorm_ranking_table <- renderTable({
+  geNorm_table() %>% 
+    arrange(Rank) %>%  # Show most stable genes first
+    select(Target, `Stability (M)` = Avg.M, Rank)
+})
+
+# Download handlers (updated with improved plots)
 output$download_genorm_plot <- downloadHandler(
   filename = function() {
-    paste("GeNorm_Plot_", Sys.Date(), ".png", sep = "")
+    paste("geNorm_stability_", Sys.Date(), ".png", sep = "")
   },
   content = function(file) {
-    png(file, width = 800, height = 600)
-    geNorm_result <- geNormAnalysis(ct_data(), ctVal = TRUE)
-    plotM(geNorm_result)
+    gnrm <- geNorm_table()
+    plot_data <- gnrm[order(-gnrm$Avg.M), ]
+    
+    png(file, width = 1200, height = 800, res = 100)
+    par(mar = c(8, 4, 4, 2) + 0.1)  # Adjust bottom margin
+    plot(plot_data$Avg.M, 
+         type = "o", pch = 16, col = "blue",
+         xaxt = "n", ylab = "Average Expression Stability (M)", 
+         xlab = "", main = "geNorm: Expression Stability", las = 1)
+    axis(1, at = 1:nrow(plot_data), labels = plot_data$Target, las = 2)
+    grid(nx = NA, ny = NULL)
     dev.off()
   }
 )
 
-# GeNorm Ranking Table
-output$genorm_ranking_table <- renderTable({
-  req(ct_data())
-  geNorm_result <- geNormAnalysis(ct_data(), ctVal = TRUE)
-  geNorm_result
-})
-output$download_genorm_ranking_table <- downloadHandler(
-  filename = function() paste0("GeNorm_Ranking_", Sys.Date(), ".csv"),
-  content = function(file) {
-    geNorm_result <- geNormAnalysis(ct_data(), ctVal = TRUE)
-    write.csv(geNorm_result, file, row.names = FALSE)
-  }
-)
-# GeNorm Pairwise Variation Plot
-output$genorm_pairwise_plot <- renderPlot({
-  req(ct_data())
-  
-  ct <- ct_data()[, -c(1, 2)]
-  ct <- as.data.frame(lapply(ct, function(x) as.numeric(as.character(x))))
-  
-  genes <- colnames(ct)
-  M_ranks <- measureM(ct_data(), ctVal = TRUE)
-  ordered_genes <- rev(M_ranks$Genes)  # Most stable first
-  
-  V_values <- c()
-  V_labels <- c()
-  
-  for (i in 2:(length(ordered_genes) - 1)) {
-    genes_i <- ordered_genes[1:i]
-    genes_i1 <- ordered_genes[1:(i + 1)]
-    
-    NF_i <- apply(ct[, genes_i], 1, function(x) exp(mean(log(x), na.rm = TRUE)))
-    NF_i1 <- apply(ct[, genes_i1], 1, function(x) exp(mean(log(x), na.rm = TRUE)))
-    
-    V <- sd(log2(NF_i / NF_i1), na.rm = TRUE)
-    V_values <- c(V_values, V)
-    V_labels <- c(V_labels, paste0("V", i, "/", i + 1))
-  }
-  
-  Vs <- data.frame(V = V_labels, Value = V_values)
-  plotV(Vs)
-})
-
-# Download GeNorm Pairwise Variation Plot
 output$download_genorm_pairwise_plot <- downloadHandler(
   filename = function() {
-    paste("GeNorm_Pairwise_Plot_", Sys.Date(), ".png", sep = "")
+    paste("geNorm_pairwise_variation_", Sys.Date(), ".png", sep = "")
   },
   content = function(file) {
-    png(file, width = 800, height = 600)
+    V_df <- pairwise_variation()
+    if(nrow(V_df) == 0) return()
     
-    ct <- ct_data()[, -c(1, 2)]
-    ct <- as.data.frame(lapply(ct, function(x) as.numeric(as.character(x))))
-    
-    genes <- colnames(ct)
-    M_ranks <- measureM(ct_data(), ctVal = TRUE)
-    ordered_genes <- rev(M_ranks$Genes)
-    
-    V_values <- c()
-    V_labels <- c()
-    
-    for (i in 2:(length(ordered_genes) - 1)) {
-      genes_i <- ordered_genes[1:i]
-      genes_i1 <- ordered_genes[1:(i + 1)]
-      
-      NF_i <- apply(ct[, genes_i], 1, function(x) exp(mean(log(x), na.rm = TRUE)))
-      NF_i1 <- apply(ct[, genes_i1], 1, function(x) exp(mean(log(x), na.rm = TRUE)))
-      
-      V <- sd(log2(NF_i / NF_i1), na.rm = TRUE)
-      V_values <- c(V_values, V)
-      V_labels <- c(V_labels, paste0("V", i, "/", i + 1))
-    }
-    
-    Vs <- data.frame(V = V_labels, Value = V_values)
-    plotV(Vs)
-    
+    png(file, width = 1000, height = 800, res = 100)
+    bp <- barplot(V_df$Value, names.arg = V_df$Variation, 
+                  col = "#1b9e77", border = NA,
+                  main = "Optimal Reference Genes Determination",
+                  ylab = "Pairwise Variation (V)",
+                  ylim = c(0, max(V_df$Value) * 1.2))
+    text(bp, V_df$Value + 0.02 * max(V_df$Value), 
+         labels = round(V_df$Value, 3))
+    abline(h = 0.15, lty = 2, col = "red")
     dev.off()
   }
 )
+
+output$download_genorm_ranking_table <- downloadHandler(
+  filename = function() {
+    paste("geNorm_ranking_", Sys.Date(), ".csv", sep = "")
+  },
+  content = function(file) {
+    write.csv(
+      geNorm_table() %>% arrange(Rank),
+      file, 
+      row.names = FALSE
+    )
+  }
+)
+
 ###mixed model stability
 library(shiny)
 library(tidyr)
@@ -911,20 +1004,38 @@ df_long <- reactive({
 
 mixed_model_results <- reactive({
   req(df_long())
-  mixedmodel_stability(
-    data = df_long(),
-    target = "Gene",
-    response = "Expression",
-    fixed.effects = "Group",
-    random.effect = "(1|Sample)",
-    form = "Expression ~ Group * Gene + (1|Sample)",
-    reduced.model = "Expression ~ Gene + (1|Sample)",
-    hypothesis.test = "LRT",
-    LRT.type = "global",
-    p.threshold = 0.05,
-    n.genes = 2,
-    n.sims = 500
-  )
+  
+  # Use a UI progress bar because the internal function uses txtProgressBar
+  withProgress(message = "Running Mixed Model stability (this may take a while)", value = 0, {
+    incProgress(0.02, detail = "Preparing combinations...")
+    Sys.sleep(0.01)
+    
+    # call the mixedmodel_stability with progress = FALSE to avoid console txtProgressBar
+    res <- mixedmodel_stability(
+      data = df_long(),
+      target = "Gene",
+      response = "Expression",
+      fixed.effects = "Group",
+      random.effect = "(1|Sample)",
+      form = "Expression ~ Group * Gene + (1|Sample)",
+      reduced.model = "Expression ~ Gene + (1|Sample)",
+      hypothesis.test = "LRT",
+      LRT.type = "global",
+      p.threshold = 0.05,
+      n.genes = 2,
+      n.sims = 500,
+      progress = FALSE  # important: don't use txtProgressBar
+    )
+    
+    # If you want to show incremental updates you can call incProgress repeatedly,
+    # but since mixedmodel_stability itself does heavy work, we give a few steps:
+    incProgress(0.70, detail = "Bootstrapping ICCs (inside mixed model)...")
+    Sys.sleep(0.01)
+    incProgress(0.25, detail = "Finalizing mixed-model results...")
+    Sys.sleep(0.01)
+    
+    res
+  })
 })
 
 ranked_mixed_model_results <- reactive({
@@ -1005,10 +1116,20 @@ output$download_ranked_mixed_model <- downloadHandler(
 )
 
 output$iccRankPlot <- renderPlot({
+  req(ranked_mixed_model_results())
   df <- ranked_mixed_model_results()
-  req(nrow(df) > 0)
+  if (nrow(df) == 0) {
+    plot.new(); text(0.5, 0.5, "No gene combinations to plot", cex = 1.2)
+    return()
+  }
   
-  ggplot(df, aes(x = Rank, y = icc.l, label = gene.combination)) +
+  # Prepare data for plotting (ensure Rank exists)
+  df <- df %>%
+    mutate(Rank = row_number()) %>%
+    arrange(Rank)
+  
+  # Build plot object (assign to variable p_icc_rank)
+  p_icc_rank <- ggplot(df, aes(x = Rank, y = icc.l, label = gene.combination)) +
     geom_point(aes(color = p.val), size = 3) +
     geom_text(nudge_y = 0.02, hjust = 0, size = 3, check_overlap = TRUE) +
     scale_color_gradient(low = "blue", high = "red", name = "LRT p-value") +
@@ -1016,15 +1137,44 @@ output$iccRankPlot <- renderPlot({
       x = "Rank",
       y = "ICC Lower Bound (95% CI)",
       title = "Gene Combination Ranking by ICC Lower Bound",
-      subtitle = "Only combinations with LRT p-value > 0.05 are shown"
+      subtitle = "Combinations with LRT p-value > 0.05 shown"
     ) +
     theme_minimal()
+  
+  print(p_icc_rank)   # render the plot
 })
 
 output$download_icc_rank_plot <- downloadHandler(
-  filename = function() paste0("ICC_Rank_Plot_", Sys.Date(), ".png"),
+  filename = function() paste0("MixedModel_ICC_Rank_Plot_", Sys.Date(), ".png"),
   content = function(file) {
-    ggsave(file, plot = last_plot(), width = 10, height = 8, dpi = 300)
+    req(ranked_mixed_model_results())
+    df <- ranked_mixed_model_results()
+    if (nrow(df) == 0) {
+      # create a simple empty png with message
+      png(file, width = 1200, height = 800, res = 150)
+      plot.new(); text(0.5, 0.5, "No gene combinations to plot", cex = 1.2)
+      dev.off()
+      return()
+    }
+    
+    df <- df %>%
+      mutate(Rank = row_number()) %>%
+      arrange(Rank)
+    
+    p_icc_rank <- ggplot(df, aes(x = Rank, y = icc.l, label = gene.combination)) +
+      geom_point(aes(color = p.val), size = 3) +
+      geom_text(nudge_y = 0.02, hjust = 0, size = 3, check_overlap = TRUE) +
+      scale_color_gradient(low = "blue", high = "red", name = "LRT p-value") +
+      labs(
+        x = "Rank",
+        y = "ICC Lower Bound (95% CI)",
+        title = "Gene Combination Ranking by ICC Lower Bound",
+        subtitle = "Combinations with LRT p-value > 0.05 shown"
+      ) +
+      theme_minimal()
+    
+    # Save explicitly using ggsave (uses the object p_icc_rank, not last_plot())
+    ggsave(filename = file, plot = p_icc_rank, width = 10, height = 8, dpi = 300)
   }
 )
 
@@ -1678,6 +1828,7 @@ iccResults <- reactive({
   )
   
   # --- Ct Distribution Plot ---
+  # --- Ct Distribution Plot (All Genes in Single Plot) ---
   output$ct_dist_plot <- renderPlot({
     req(ct_data())
     
@@ -1698,22 +1849,79 @@ iccResults <- reactive({
     
     final <- left_join(summary_data, p_vals, by = "Gene")
     
+    # For p-value label positioning
+    p_val_data <- ct_long %>%
+      group_by(Gene) %>%
+      summarise(y_pos = max(Ct, na.rm = TRUE) + 1) %>%
+      left_join(p_vals, by = "Gene")
+    
     # Generate dynamic color palette
     group_levels <- unique(ct_long$Group)
     palette <- setNames(RColorBrewer::brewer.pal(n = max(3, length(group_levels)), "Set2")[1:length(group_levels)],
                         group_levels)
     
+    dodge_width <- 0.6  # Adjust as needed for spacing
+    
     ggplot(final, aes(x = Gene, y = mean_Ct, color = Group)) +
-      geom_jitter(data = ct_long, aes(x = Gene, y = Ct, color = Group), width = 0.2, alpha = 0.5) +
-      geom_point(size = 4) +
-      geom_errorbar(aes(ymin = mean_Ct - sd_Ct, ymax = mean_Ct + sd_Ct), width = 0.2) +
-      geom_text(aes(label = label), position = position_nudge(y = 2), size = 3) +
-      facet_wrap(~ Gene) +
+      # Raw data points with jitter and dodge
+      geom_jitter(
+        data = ct_long,
+        aes(y = Ct),
+        position = position_jitterdodge(
+          jitter.width = 0.15,
+          dodge.width = dodge_width
+        ),
+        alpha = 0.5,
+        size = 2
+      ) +
+      # Mean points
+      geom_point(
+        aes(group = Group),
+        position = position_dodge(width = dodge_width),
+        size = 4
+      ) +
+      # Error bars
+      geom_errorbar(
+        aes(
+          ymin = mean_Ct - sd_Ct,
+          ymax = mean_Ct + sd_Ct,
+          group = Group
+        ),
+        position = position_dodge(width = dodge_width),
+        width = 0.25,
+        linewidth = 1
+      ) +
+      # Mean ± SD labels
+      geom_text(
+        aes(
+          y = mean_Ct + sd_Ct + 0.8,
+          label = label,
+          group = Group
+        ),
+        position = position_dodge(width = dodge_width),
+        size = 3.5,
+        show.legend = FALSE
+      ) +
+      # p-value labels
+      geom_text(
+        data = p_val_data,
+        aes(x = Gene, y = y_pos, label = ifelse(is.na(p_value), "", sprintf("p=%.3f", p_value))),
+        inherit.aes = FALSE,
+        size = 3.5,
+        color = "black"
+      ) +
       scale_color_manual(values = palette) +
       theme_minimal() +
-      labs(y = "Ct Value", x = "Gene") +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+      labs(y = "Ct Value", x = "Gene", title = "Ct Values by Gene and Group") +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+        axis.title = element_text(size = 14),
+        plot.title = element_text(hjust = 0.5, size = 16),
+        legend.position = "top"
+      ) +
+      scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))  # Add space for labels
   })
+  
   output$download_ct_dist_plot <- downloadHandler(
     filename = function() {
       paste("Ct_Distribution_Plot", Sys.Date(), ".png", sep = "")
@@ -1738,29 +1946,66 @@ iccResults <- reactive({
       
       final <- left_join(summary_data, p_vals, by = "Gene")
       
+      p_val_data <- ct_long %>%
+        group_by(Gene) %>%
+        summarise(y_pos = max(Ct, na.rm = TRUE) + 1) %>%
+        left_join(p_vals, by = "Gene")
+      
       # Generate dynamic color palette
       group_levels <- unique(ct_long$Group)
       palette <- setNames(RColorBrewer::brewer.pal(n = max(3, length(group_levels)), "Set2")[1:length(group_levels)],
                           group_levels)
       
+      dodge_width <- 0.6
+      
       p <- ggplot(final, aes(x = Gene, y = mean_Ct, color = Group)) +
-        geom_jitter(data = ct_long, aes(x = Gene, y = Ct, color = Group), width = 0.2, alpha = 0.5) +
-        geom_point(size = 4) +
-        geom_errorbar(aes(ymin = mean_Ct - sd_Ct, ymax = mean_Ct + sd_Ct), width = 0.2) +
-        geom_text(aes(label = label), position = position_nudge(y = 2), size = 3) +
-        facet_wrap(~ Gene) +
+        geom_jitter(
+          data = ct_long,
+          aes(y = Ct),
+          position = position_jitterdodge(jitter.width = 0.15, dodge.width = dodge_width),
+          alpha = 0.5,
+          size = 2
+        ) +
+        geom_point(
+          aes(group = Group),
+          position = position_dodge(width = dodge_width),
+          size = 4
+        ) +
+        geom_errorbar(
+          aes(ymin = mean_Ct - sd_Ct, ymax = mean_Ct + sd_Ct, group = Group),
+          position = position_dodge(width = dodge_width),
+          width = 0.25,
+          linewidth = 1
+        ) +
+        geom_text(
+          aes(y = mean_Ct + sd_Ct + 0.8, label = label, group = Group),
+          position = position_dodge(width = dodge_width),
+          size = 3.5
+        ) +
+        geom_text(
+          data = p_val_data,
+          aes(x = Gene, y = y_pos, label = ifelse(is.na(p_value), "", sprintf("p=%.3f", p_value))),
+          inherit.aes = FALSE,
+          size = 3.5,
+          color = "black"
+        ) +
         scale_color_manual(values = palette) +
         theme_minimal() +
-        labs(y = "Ct Value", x = "Gene") +
-        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+        labs(y = "Ct Value", x = "Gene", title = "Ct Values by Gene and Group") +
+        theme(
+          axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+          axis.title = element_text(size = 14),
+          plot.title = element_text(hjust = 0.5, size = 16),
+          legend.position = "top"
+        ) +
+        scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))
       
-      ggsave(file, plot = p, width = 10, height = 6, dpi = 300)
+      ggsave(file, plot = p, width = 10, height = 7, dpi = 300, bg = "white")
     }
   )
 
-
-# COMPLETE CUMULATIVE GEOMETRIC MEAN RANKING SCRIPT ---------------------------
- 
+  # COMPLETE CUMULATIVE GEOMETRIC MEAN RANKING SCRIPT (FIXED) -------------------
+  
   # 1. Stability Method Reactives ------------------------------------------------
   normResults <- reactive({
     req(ct_data())
@@ -1797,9 +2042,9 @@ iccResults <- reactive({
   })
   
   geNormResults <- reactive({
-    req(ct_data())
-    df <- geNormAnalysis(ct_data())
-    rename(df, Gene = Genes, GeNormScore = Avg.M)
+    req(geNorm_table())
+    geNorm_table() %>%
+      select(Gene = Target, GeNormScore = Avg.M)
   })
   
   mixedModelGeneRanks <- reactive({
@@ -1814,22 +2059,21 @@ iccResults <- reactive({
       mutate(
         MixedModel_rank = dense_rank(desc(MixedModel_Score))
       )
-    
-    all_genes <- unique(ct_data() %>% select(-Group, -Sample) %>% names())
-    missing_genes <- setdiff(all_genes, gene_icc_scores$Gene)
-    
-    if(length(missing_genes) > 0) {
-      gene_icc_scores <- bind_rows(
-        gene_icc_scores,
-        tibble(Gene = missing_genes, 
-               MixedModel_Score = NA_real_,
-               MixedModel_rank = NA_integer_)
-      )
-    }
-    gene_icc_scores
+        all_genes <- unique(ct_data() %>% select(-Group, -Sample) %>% names())
+        missing_genes <- setdiff(all_genes, gene_icc_scores$Gene)
+        
+        if(length(missing_genes) > 0) {
+          gene_icc_scores <- bind_rows(
+            gene_icc_scores,
+            tibble(Gene = missing_genes, 
+                   MixedModel_Score = NA_real_,
+                   MixedModel_rank = NA_integer_)
+          )
+        }
+        gene_icc_scores
   })
-  
-  # 2. Combined Ranking Calculation ----------------------------------------------
+    
+    # 2. Combined Ranking Calculation (FIXED) -------------------------------------
   cumulative_data <- reactive({
     req(
       normResults(), bestKeeperResults(),
@@ -1837,94 +2081,68 @@ iccResults <- reactive({
       geNormResults(), mixedModelGeneRanks()
     )
     
-    combined_data <- list(
-      normResults(), bestKeeperResults(),
-      deltaCtResults(),
-      geNormResults(), mixedModelGeneRanks()
-    ) %>% 
-      reduce(full_join, by = "Gene")
-    
-    combined_data %>%
-      mutate(across(ends_with("_Score"), as.numeric)) %>%
-      mutate(
-        NF_Stab_rank = dense_rank(NF_Stability_Score),
-        NF_IGroupSDv1_rank = dense_rank(NF_IGroupSD_v1_Score),
-        NF_IGroupSDv2_rank = dense_rank(NF_IGroupSD_v2_Score),
-        BestKeeper_SD_rank = dense_rank(BestKeeper_SD_Score),
-        BestKeeper_Corr_rank = if_else(
-          BestKeeper_Corr_PValue > 0.05,
-          0L,
-          dense_rank(desc(BestKeeper_Corr_Score))
-        ),
-        DeltaCt_rank = dense_rank(DeltaCtScore),
-        GeNorm_rank = dense_rank(desc(GeNormScore)),
-        MixedModel_rank = dense_rank(desc(MixedModel_Score))
-      ) %>%
-      mutate(across(ends_with("_rank"), ~na_if(.x, 0L))) %>%
-      rowwise() %>%
-      mutate(
-        # Include DeltaCt and GeNorm ranks in calculation
-        Cumulative_Geomean_Rank = exp(mean(log(c(
-          NF_Stab_rank, NF_IGroupSDv1_rank, NF_IGroupSDv2_rank,
-          BestKeeper_SD_rank, BestKeeper_Corr_rank,
-          DeltaCt_rank, GeNorm_rank,  # Added missing ranks
-          MixedModel_rank
-        )), na.rm = TRUE))
-      ) %>%
-      ungroup() %>%
-      arrange(Cumulative_Geomean_Rank)
+    withProgress(message = "Computing cumulative ranking", value = 0, {
+      incProgress(0.05, detail = "Merging method outputs...")
+      combined_data <- list(
+        normResults(), bestKeeperResults(),
+        deltaCtResults(),
+        geNormResults(), mixedModelGeneRanks()
+      ) %>% 
+        reduce(full_join, by = "Gene")
+      
+      incProgress(0.20, detail = "Converting to numeric and ranking...")
+      Sys.sleep(0.01)
+      
+      combined_data <- combined_data %>%
+        mutate(across(ends_with("_Score"), as.numeric))
+      
+      incProgress(0.50, detail = "Computing per-method ranks and geometric mean...")
+      Sys.sleep(0.01)
+      
+      # perform ranks and geomean as before
+      combined_data <- combined_data %>%
+        mutate(
+          NF_Stab_rank = dense_rank(NF_Stability_Score),
+          NF_IGroupSDv1_rank = dense_rank(NF_IGroupSD_v1_Score),
+          NF_IGroupSDv2_rank = dense_rank(NF_IGroupSD_v2_Score),
+          BestKeeper_SD_rank = dense_rank(BestKeeper_SD_Score),
+          BestKeeper_Corr_rank = if_else(
+            BestKeeper_Corr_PValue > 0.05,
+            NA_real_,
+            dense_rank(desc(BestKeeper_Corr_Score))
+          ),
+          DeltaCt_rank = dense_rank(DeltaCtScore),
+          GeNorm_rank = dense_rank(GeNormScore),
+          MixedModel_rank = dense_rank(desc(MixedModel_Score))
+        ) %>%
+        rowwise() %>%
+        mutate(
+          log_ranks = list(log(c(
+            NF_Stab_rank, NF_IGroupSDv1_rank, NF_IGroupSDv2_rank,
+            BestKeeper_SD_rank, BestKeeper_Corr_rank,
+            DeltaCt_rank, GeNorm_rank,
+            MixedModel_rank
+          ))),
+          valid_logs = sum(!is.na(log_ranks)),
+          Cumulative_Geomean_Rank = ifelse(
+            valid_logs > 0,
+            exp(mean(log_ranks, na.rm = TRUE)),
+            NA_real_
+          )
+        ) %>%
+        ungroup() %>%
+        arrange(Cumulative_Geomean_Rank) %>%
+        select(-log_ranks, -valid_logs)
+      
+      incProgress(0.25, detail = "Done")
+      combined_data
+    })
   })
   
-  # 3. Output Rendering ----------------------------------------------------------
-  output$cumulative_table <- renderDT({
-    cumulative_data() %>%
-      select(
-        Gene,
-        NF_Stability_Score, NF_Stab_rank,
-        NF_IGroupSD_v1_Score, NF_IGroupSDv1_rank,
-        NF_IGroupSD_v2_Score, NF_IGroupSDv2_rank,
-        BestKeeper_SD_Score, BestKeeper_SD_rank,
-        BestKeeper_Corr_Score, BestKeeper_Corr_PValue, BestKeeper_Corr_rank,
-        DeltaCtScore, DeltaCt_rank,
-        GeNormScore, GeNorm_rank,
-        MixedModel_Score, MixedModel_rank,
-        Cumulative_Geomean_Rank
-      ) %>%
-      rename(
-        "NF Stability" = NF_Stability_Score,
-        "NF Rank" = NF_Stab_rank,
-        "NF IGroupSDv1" = NF_IGroupSD_v1_Score,
-        "NF v1 Rank" = NF_IGroupSDv1_rank,
-        "NF IGroupSDv2" = NF_IGroupSD_v2_Score,
-        "NF v2 Rank" = NF_IGroupSDv2_rank,
-        "BK SD" = BestKeeper_SD_Score,
-        "BK SD Rank" = BestKeeper_SD_rank,
-        "BK Corr (r)" = BestKeeper_Corr_Score,
-        "BK p-value" = BestKeeper_Corr_PValue,
-        "BK Corr Rank" = BestKeeper_Corr_rank,
-        "ΔCt Score" = DeltaCtScore,
-        "ΔCt Rank" = DeltaCt_rank,
-        "geNorm M" = GeNormScore,
-        "geNorm Rank" = GeNorm_rank,
-        "Mixed Model ICC" = MixedModel_Score,
-        "MM Rank" = MixedModel_rank,
-        "Final Rank" = Cumulative_Geomean_Rank
-      )
-  }, options = list(
-    pageLength = 10,
-    scrollX = TRUE,
-    autoWidth = TRUE,
-    columnDefs = list(
-      # Corrected column indices (0-based) for all numeric columns
-      list(targets = 1:18, className = "dt-right")
-    ), 
-    rownames = FALSE))
-  
-  output$download_cumulative_table <- downloadHandler(
-    filename = function() {
-      paste0("Detailed_Gene_Stability_Table_", Sys.Date(), ".csv")
-    },
-    content = function(file) {
+    
+    # 3. Output Rendering (FIXED) -------------------------------------------------
+    output$cumulative_table <- renderDT({
+      req(cumulative_data())
       cumulative_data() %>%
         select(
           Gene,
@@ -1957,93 +2175,133 @@ iccResults <- reactive({
           "Mixed Model ICC" = MixedModel_Score,
           "MM Rank" = MixedModel_rank,
           "Final Rank" = Cumulative_Geomean_Rank
-        ) %>%
-        write.csv(file, row.names = FALSE)
-    }
-  )
-  
-  
-  output$ranking_plot <- renderPlot({
-    df <- cumulative_data()
-    validate(need(nrow(df) > 0, "No data available"))
+        )
+    }, options = list(
+      pageLength = 10,
+      scrollX = TRUE,
+      autoWidth = TRUE,
+      columnDefs = list(list(targets = "_all", className = "dt-right")), 
+      rownames = FALSE))
     
-    ggplot(df, aes(
-      x = reorder(Gene, Cumulative_Geomean_Rank),  # Removed fct_rev()
-      y = Cumulative_Geomean_Rank, 
-      fill = Cumulative_Geomean_Rank
-    )) +
-      geom_col(width = 0.8) +
-      scale_fill_gradient(
-        low = "green3", 
-        high = "purple3", 
-        name = "Rank Score",
-        guide = guide_colorbar(reverse = TRUE)
-      ) +
-      labs(
-        x = NULL,
-        y = "Cumulative Geometric Mean Rank",
-        title = "Comprehensive Gene Stability Ranking"
-      ) +
-      coord_flip() +
-      theme_minimal(base_size = 14) +
-      theme(
-        plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
-        axis.text.y = element_text(face = "italic", size = 12),
-        axis.title.x = element_text(margin = margin(t = 15)),
-        legend.title = element_text(face = "bold")
-      ) +
-      scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
-      scale_x_discrete(limits = rev)  # Added to fix ordering
-  })
-  
-  output$download_ranking_plot <- downloadHandler(
-    filename = function() {
-      paste0("Overall_Gene_Stability_Ranking_", Sys.Date(), ".png")
-    },
-    content = function(file) {
-      df <- cumulative_data()
-      p <- ggplot(df, aes(
-        x = reorder(Gene, Cumulative_Geomean_Rank),
-        y = Cumulative_Geomean_Rank, 
-        fill = Cumulative_Geomean_Rank
-      )) +
-        geom_col(width = 0.8) +
-        scale_fill_gradient(
-          low = "green3", 
-          high = "purple3", 
-          name = "Rank Score",
-          guide = guide_colorbar(reverse = TRUE)
-        ) +
-        labs(
-          x = NULL,
-          y = "Cumulative Geometric Mean Rank",
-          title = "Comprehensive Gene Stability Ranking"
-        ) +
+    # NEW: Cumulative ranking plot
+    output$cumulative_plot <- renderPlot({
+      req(cumulative_data())
+      topn <- cumulative_data() %>% arrange(Cumulative_Geomean_Rank) %>% slice_head(n = 20)
+      
+      # long per-method ranks for overlay
+      overlay <- topn %>%
+        select(Gene,
+               NF_Stab_rank, NF_IGroupSDv1_rank, NF_IGroupSDv2_rank,
+               BestKeeper_SD_rank, BestKeeper_Corr_rank,
+               DeltaCt_rank, GeNorm_rank, MixedModel_rank,
+               Cumulative_Geomean_Rank) %>%
+        pivot_longer(cols = -c(Gene, Cumulative_Geomean_Rank),
+                     names_to = "Method", values_to = "Rank")
+      
+      topn <- topn %>%
+        mutate(Gene = fct_reorder(as.factor(Gene), Cumulative_Geomean_Rank),
+               Gene = fct_rev(Gene))
+      
+      overlay$Gene <- factor(overlay$Gene, levels = levels(topn$Gene))
+      
+      ggplot() +
+        geom_col(data = topn, aes(x = Gene, y = Cumulative_Geomean_Rank), fill = "grey80") +
+        geom_point(data = overlay, aes(x = Gene, y = Rank, color = Method), position = position_jitter(width = 0.12, height = 0), size = 2) +
         coord_flip() +
-        theme_minimal(base_size = 14) +
-        theme(
-          plot.title = element_text(hjust = 0.5, face = "bold", size = 16),
-          axis.text.y = element_text(face = "italic", size = 12),
-          axis.title.x = element_text(margin = margin(t = 15)),
-          legend.title = element_text(face = "bold")
-        ) +
-        scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
-        scale_x_discrete(limits = rev)
-      ggsave(file, plot = p, width = 10, height = 8, dpi = 300)
-    }
-  )
+        labs(title = "Top Stable Genes — Combined (bar = GM, points = per-method ranks)",
+             y = "Rank (lower = more stable)",
+             x = "Gene (top = most stable → bottom = least stable)",
+             color = "Method") +
+        theme_minimal() +
+        theme(text = element_text(size = 11))
+    })
+    
+    # FIXED: Download handler for detailed table
+    output$download_cumulative_plot <- downloadHandler(
+      filename = function() {
+        paste0("Cumulative_Ranking_Plot_", Sys.Date(), ".png")
+      },
+      contentType = "image/png", # ensure browser treats it as PNG
+      content = function(file) {
+        req(cumulative_data())
+        
+        
+        # prepare top-20 data and overlay (same semantics as your UI plot)
+        topn <- cumulative_data() %>%
+          dplyr::arrange(Cumulative_Geomean_Rank) %>%
+          dplyr::slice_head(n = 20)
+        
+        
+        overlay <- topn %>%
+          dplyr::select(Gene,
+                        NF_Stab_rank, NF_IGroupSDv1_rank, NF_IGroupSDv2_rank,
+                        BestKeeper_SD_rank, BestKeeper_Corr_rank,
+                        DeltaCt_rank, GeNorm_rank, MixedModel_rank,
+                        Cumulative_Geomean_Rank) %>%
+          tidyr::pivot_longer(cols = -c(Gene, Cumulative_Geomean_Rank),
+                              names_to = "Method", values_to = "Rank")
+        
+        
+        # ensure ordering so top = most stable
+        topn <- topn %>%
+          dplyr::mutate(
+            Gene = forcats::fct_reorder(as.factor(Gene), Cumulative_Geomean_Rank),
+            Gene = forcats::fct_rev(Gene)
+          )
+        
+        
+        # align overlay factor levels with topn
+        overlay$Gene <- factor(as.character(overlay$Gene), levels = levels(topn$Gene))
+        
+        
+        # build plot (same as your UI plot)
+        p <- ggplot2::ggplot() +
+          ggplot2::geom_col(data = topn, aes(x = Gene, y = Cumulative_Geomean_Rank), fill = "grey80") +
+          ggplot2::geom_point(data = overlay, aes(x = Gene, y = Rank, color = Method),
+                              position = ggplot2::position_jitter(width = 0.12, height = 0),
+                              size = 2) +
+          ggplot2::coord_flip() +
+          ggplot2::labs(title = "Top Stable Genes — Combined (bar = GM, points = per-method ranks)",
+                        y = "Rank (lower = more stable)",
+                        x = "Gene (top = most stable → bottom = least stable)",
+                        color = "Method") +
+          ggplot2::theme_minimal() +
+          ggplot2::theme(text = ggplot2::element_text(size = 11))
+        
+        
+        # Write PNG reliably to the path 'file' that Shiny provides.
+        # Use the PNG device so the file content and MIME type are unambiguous.
+        png(filename = file, width = 10 * 300, height = 8 * 300, res = 300)
+        print(p)
+        dev.off()
+      }
+    )
   
-  output$download_ranking <- downloadHandler(
-    filename = function() {
-      paste("comprehensive_gene_ranking_", Sys.Date(), ".csv", sep = "")
-    },
-    content = function(file) {
-      write_csv(cumulative_data(), file)
-    }
-  )
+    # FIXED: Download handler for detailed table
+    output$download_cumulative_table <- downloadHandler(
+      filename = function() {
+        paste0("Detailed_Gene_Stability_Table_", Sys.Date(), ".csv")
+      },
+      content = function(file) {
+        req(cumulative_data())
+        write.csv(cumulative_data(), file, row.names = FALSE)
+      }
+    )
+    
+    # NEW: Download handler for raw ranked data
+    output$download_cumulative_raw <- downloadHandler(
+      filename = function() {
+        paste0("Raw_Cumulative_Ranking_", Sys.Date(), ".csv")
+      },
+      content = function(file) {
+        req(cumulative_data())
+        cumulative_data() %>%
+          select(Gene, Cumulative_Geomean_Rank) %>%
+          write.csv(file, row.names = FALSE)
+      }
+    )
+  
 } 
 
 # Run the application 
 shinyApp(ui = ui, server = server)
-
-
