@@ -44,5 +44,5 @@ GeNorm: Vandesompele J, De Preter K, Pattyn F, et al. Genome Biol. 2002;3(7):res
 Mixed Model Stability: Dai H, Charnigo R, Vyhlidal CA, et al. Stat Med. 2013;32(18):3115-25.
 ctrlGene: Zhong S (2019). ctrlGene: Assess the Stability of Candidate Housekeeping Genes. R package version 1.0.1, https://CRAN.R-project.org/package=ctrlGene.
 
-The tutorial available on the lab's YouTube channel: (https://youtu.be/dp6QCibtYCg).
+The tutorial available on the lab's YouTube channel: (https://youtu.be/dp6QCibtYCg). We gratefully acknowledge Mrs. Aarti Dige (YouTube: @anweshuaishu; aartishere101@gmail.com) for her skillful video editing, which brought this work to life visually.
 <img width="6320" height="3733" alt="final_flowchart_211025_021125_USED_AS_EPS drawio_optimized_10000" src="https://github.com/user-attachments/assets/e20b851a-5f22-4fd8-96a2-b43b572401bc" />
